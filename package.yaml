@@ -35,6 +35,8 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - calculator-arrow
+    - arrows
+    - Stream
 
 tests:
   calculator-arrow-test:
