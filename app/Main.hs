@@ -3,143 +3,263 @@ module Main where
 import qualified Data.Stream as Stream
 import Control.Arrow
 import Control.Arrow.Transformer.Automaton(Automaton(..),runAutomaton)
+import Control.Arrow.Transformer.Stream(StreamArrow(..),runStream)
+import Data.Word(Word8)
+import Data.Ratio(numerator,denominator)
+import Data.Char (intToDigit)
+import Data.Maybe (isJust,fromJust)
+import System.IO(stdin,stdout,BufferMode(..),hSetEcho,hSetBuffering,hGetContents,hFlush)
+import Control.Monad(forM_)
+
+
+type ORScale = Word8
+
+scaleMax :: ORScale
+scaleMax = 12
+
+data OperandRegister = ORIntegral Integer
+                     | ORFractional Integer ORScale
+                     deriving (Show)
+
+appendDigit :: OperandRegister -> Word8 -> OperandRegister
+appendDigit x@(ORIntegral v) n
+  | (0 <= n && n <= 9) = ORIntegral $ (v * 10) + (fromIntegral n)
+  | otherwise = x
+appendDigit x@(ORFractional v s) n
+  | (s < scaleMax) && (0 <= n && n <= 9) = ORFractional ((v * 10) + (fromIntegral n)) (s+1)
+  | otherwise = x
+
+forceFractional :: OperandRegister -> OperandRegister
+forceFractional (ORIntegral v) = ORFractional v 0
+forceFractional x = x
+
+reduceDigit :: OperandRegister -> OperandRegister
+reduceDigit (ORIntegral v) = ORIntegral $ v `div` 10
+reduceDigit (ORFractional v 0) = ORIntegral v
+reduceDigit (ORFractional v s) = ORFractional (v `div` 10) (s-1)
+
+optimise :: OperandRegister -> OperandRegister
+optimise x@(ORIntegral _) = x
+optimise x = f x
+  where
+    f (ORFractional v 0) = ORIntegral v
+    f x@(ORFractional v s) =
+      let
+        (d,m) = divMod v 10
+      in if m == 0
+         then f $ ORFractional d (s-1)
+         else x
+
+
+instance Num OperandRegister where
+  (+) x@(ORFractional xv xs) y@(ORFractional yv ys) | xs >= ys  = ORFractional (xv+(yv*(10^(xs-ys)))) xs
+                                                    | otherwise = (+) y x
+  (+) x y = (+) (forceFractional x) (forceFractional y)
+
+  (*) (ORFractional xv xs) (ORFractional yv ys) | (xs+ys) <= scaleMax = ORFractional (xv*yv) (xs+ys)
+                                                | otherwise = ORFractional ((xv*yv) `div` (10^((xs+ys)-scaleMax))) scaleMax
+  (*) x y = (*) (forceFractional x) (forceFractional y)
+ 
+  abs (ORFractional v s) = ORFractional (abs v) s
+  abs (ORIntegral v) = ORIntegral $ abs v
+  
+  signum (ORFractional v _) = ORIntegral $ signum v
+  signum x = signum $ forceFractional x
+  
+  negate (ORFractional v s) = ORFractional (negate v) s
+  negate (ORIntegral v) = ORIntegral $ negate v
+  
+  fromInteger x = ORIntegral x
+
+
+divide :: OperandRegister -> OperandRegister -> OperandRegister
+divide (ORFractional xv xs) (ORFractional yv ys) =
+  let
+    s = max xs ys
+    xv' = xv * (10^(s-xs)) * (10^scaleMax)
+    yv' = yv * (10^(s-ys))
+  in ORFractional (xv' `div` yv') scaleMax
+  
+divide x y = divide (forceFractional x) (forceFractional y)
+
+instance Fractional OperandRegister where
+  (/) x y = x `divide` y
+  fromRational x = (ORIntegral $ numerator x) `divide` (ORIntegral $ denominator x)
+
+    
+
+newtype OperandRegister' = OperandRegister' OperandRegister
+
+instance Show OperandRegister' where
+  show (OperandRegister' (ORIntegral v)) = f v []
+    where
+      f n xs = if n >= 0
+               then f' n xs
+               else '-': f' (abs n) xs
+
+      f' 0 xs = if length xs == 0
+               then "0"
+               else xs
+
+      f' n xs =
+        let
+          (d,m) = divMod n 10
+        in f' d $ (intToDigit $ fromIntegral m) : xs
+
+  show (OperandRegister' (ORFractional v s)) = mconcat $ f v []
+    where
+      f n xs = if n >= 0
+               then f' n xs
+               else "-": f' (abs n) xs
+
+      f' 0 xs =
+        let
+          zs = fromIntegral s - length xs
+        in if 0 <= zs
+           then ("0." <> replicate zs '0') : xs
+           else xs
+
+      f' n xs =
+        let
+          (d,m) = divMod n 10
+          m' = intToDigit $ fromIntegral m
+          x = if length xs == fromIntegral s
+              then [m','.']
+              else [m']
+        in f' d (x:xs)
+
 
 
 data Operation = Add | Sub | Mul | Div deriving (Show)
-calc :: Operation -> Float -> Float -> Float
+
+calc :: Operation -> OperandRegister -> OperandRegister -> OperandRegister
 calc Add = (+)
 calc Sub = (-)
 calc Mul = (*)
 calc Div = (/)
 
-data Input = Clear | Number Float | Operator Operation deriving (Show)
+calc' op x = optimise . (calc op x)
 
-data State = Init | Done Float | Operating Float Operation
 
-calculator :: (ArrowLoop a, ArrowApply a) => Automaton a Input Float
-calculator = init
+data NumKey = N0 | N1 | N2 | N3 | N4 | N5 | N6 | N7 | N8 | N9 | Dot | BS deriving (Show)
+
+keyinput :: NumKey -> OperandRegister -> OperandRegister
+keyinput N0  = flip appendDigit 0
+keyinput N1  = flip appendDigit 1
+keyinput N2  = flip appendDigit 2
+keyinput N3  = flip appendDigit 3
+keyinput N4  = flip appendDigit 4
+keyinput N5  = flip appendDigit 5
+keyinput N6  = flip appendDigit 6
+keyinput N7  = flip appendDigit 7
+keyinput N8  = flip appendDigit 8
+keyinput N9  = flip appendDigit 9
+keyinput Dot = forceFractional
+keyinput BS  = reduceDigit
+
+
+
+data Input = Number NumKey | Operator Operation | Equal | Clear | AllClear deriving (Show)
+data State = Operand1 OperandRegister | Operand2 OperandRegister Operation OperandRegister deriving (Show)
+type Output = OperandRegister
+
+calculator :: (ArrowLoop a, ArrowApply a) => Automaton a Input Output
+calculator = operand1 zero
   where
-    init = Automaton $ arr r &&& arr (next Init)
+    zero = ORIntegral 0
+    
+    operand1 r = Automaton $ arr eval &&& arr (next eval (Operand1 r))
       where
-        r (Number x) = x -- new Number
-        r _ = 0.0
-    
-    done n = Automaton $ arr (r n) &&& arr (next (Done n))
+        eval (Number x) = keyinput x r
+        eval (Operator _) = zero
+        eval Equal = r
+        eval Clear = zero
+        eval AllClear = zero
+
+    operand2 r1 op r2 = Automaton $ arr eval &&& arr (next eval (Operand2 r1 op r2))
       where
-        r _ Clear = 0.0
-        r _ (Number x) = x -- overwrite Number
-        r n (Operator _) = n -- keep Number
-        
-    operating n op = Automaton $ arr (r n op) &&& arr (next (Operating n op))
+        eval (Number x) = keyinput x r2
+        eval (Operator _) = calc' op r1 r2
+        eval Equal = calc' op r1 r2
+        eval Clear = zero
+        eval AllClear = zero
+
+    next :: (ArrowLoop a, ArrowApply a) => (Input -> Output) -> State -> Input -> Automaton a Input Output
+    next ev (Operand1 _) i@(Number _) = operand1 $ ev i
+    next ev (Operand1 r) i@(Operator x) = operand2 r x (ev i)
+    next ev (Operand1 _) i@Equal = operand1 $ ev i
+    next ev (Operand1 _) i@Clear = operand1 $ ev i
+    next ev (Operand1 _) i@AllClear = operand1 $ ev i
+    
+    next ev (Operand2 r1 op _) i@(Number _) = operand2 r1 op $ ev i
+    next ev (Operand2 _  _  _) i@(Operator x) = operand2 (ev i) x zero
+    next ev (Operand2 _  _  _) i@Equal = operand1 $ ev i
+    next ev (Operand2 r1 op _) i@Clear = operand2 r1 op $ ev i
+    next ev (Operand2 _  _  _) i@AllClear = operand1 $ ev i
+
+    
+calculate :: Stream.Stream Input -> Stream.Stream OperandRegister
+calculate xs = (runAutomaton $ arr snd >>> calculator) ((),xs)
+
+calculateLog :: Stream.Stream Input -> Stream.Stream (Input ,OperandRegister)
+calculateLog xs = (runAutomaton $ arr snd >>> (returnA &&& calculator)) ((),xs)
+
+
+toInput :: Stream.Stream Char -> Stream.Stream Input
+toInput xs = (runStream $ arr snd >>> sarr) ((),xs)
+  where
+    sarr = StreamArrow $ arr (Stream.filter $ isJust . f) >>> arr (Stream.map $ fromJust . f)
       where
-        r _ _ Clear = 0.0
-        r n op (Number x) = calc op n x
-        r n _ (Operator _) = n -- keep Number
-        
-    
-    next Init Clear = init
-    next Init (Number x) = done x -- new Number
-    next Init (Operator _) = init
-
-    next (Done _) Clear = init
-    next (Done _) (Number x) = done x -- overwrite Number
-    next (Done n) (Operator op) = operating n op
-    
-    next (Operating _ _) Clear = init
-    next (Operating n op) (Number x) = done $ calc op n x
-    next (Operating n _) (Operator op) = operating n op -- overwrite Operation
-    
-    
-runCalc :: Stream.Stream Input -> Stream.Stream Float
-runCalc xs = (runAutomaton $ arr snd >>> calculator) ((),xs)
-
-runCalcLog :: Stream.Stream Input -> Stream.Stream (Input ,Float)
-runCalcLog xs = (runAutomaton $ arr snd >>> (returnA &&& calculator)) ((),xs)
-
-             
-test :: [Input] -> [Float]
-test xs = Stream.toList $ runCalc $ Stream.fromList $ xs <> (repeat Clear)
-
-testLog :: [Input] -> [(Input,Float)]
-testLog xs = Stream.toList $ runCalcLog $ Stream.fromList $ xs <> (repeat Clear)
+        f :: Char -> Maybe Input
+        f '0' = Just $ Number N0
+        f '1' = Just $ Number N1
+        f '2' = Just $ Number N2
+        f '3' = Just $ Number N3
+        f '4' = Just $ Number N4
+        f '5' = Just $ Number N5
+        f '6' = Just $ Number N6
+        f '7' = Just $ Number N7
+        f '8' = Just $ Number N8
+        f '9' = Just $ Number N9
+        f '.' = Just $ Number Dot
+        f 'd' = Just $ Number BS
+        f '+' = Just $ Operator Add
+        f '-' = Just $ Operator Sub
+        f '*' = Just $ Operator Mul
+        f '/' = Just $ Operator Div
+        f '\n' = Just Equal
+        f '=' = Just Equal
+        f 'a' = Just AllClear
+        f 'c' = Just Clear
+        f _ = Nothing
 
 
-test1 = take 4 $ test [Number 100,Operator Add,Number 10]
+fromOutput :: Stream.Stream OperandRegister -> Stream.Stream String
+fromOutput xs = (runStream $ arr snd >>> sarr) ((),xs)
+  where
+    sarr = StreamArrow $ arr $ Stream.map $ show . OperandRegister'
 
-testLog1 = take 4 $ testLog $ [Clear, Clear, Clear]
-testLog2 = take 4 $ testLog $ [Clear, Clear, Number 100]
-testLog3 = take 4 $ testLog $ [Clear, Clear, Operator Add]
-testLog4 = take 4 $ testLog $ [Clear, Number 10, Clear]
-testLog5 = take 4 $ testLog $ [Clear, Number 10, Number 100]
-testLog6 = take 4 $ testLog $ [Clear, Number 10, Operator Add]
-testLog7 = take 4 $ testLog $ [Clear, Operator Mul, Clear]
-testLog8 = take 4 $ testLog $ [Clear, Operator Mul, Number 100]
-testLog9 = take 4 $ testLog $ [Clear, Operator Mul, Operator Add]
-
-testLog10 = take 4 $ testLog $ [Number 5, Clear, Clear]
-testLog11 = take 4 $ testLog $ [Number 5, Clear, Number 100]
-testLog12 = take 4 $ testLog $ [Number 5, Clear, Operator Add]
-testLog13 = take 4 $ testLog $ [Number 5, Number 10, Clear]
-testLog14 = take 4 $ testLog $ [Number 5, Number 10, Number 100]
-testLog15 = take 4 $ testLog $ [Number 5, Number 10, Operator Add]
-testLog16 = take 4 $ testLog $ [Number 5, Operator Mul, Clear]
-testLog17 = take 4 $ testLog $ [Number 5, Operator Mul, Number 100]
-testLog18 = take 4 $ testLog $ [Number 5, Operator Mul, Operator Add]
-
-testLog19 = take 4 $ testLog $ [Operator Sub, Clear, Clear]
-testLog20 = take 4 $ testLog $ [Operator Sub, Clear, Number 100]
-testLog21 = take 4 $ testLog $ [Operator Sub, Clear, Operator Add]
-testLog22 = take 4 $ testLog $ [Operator Sub, Number 10, Clear]
-testLog23 = take 4 $ testLog $ [Operator Sub, Number 10, Number 100]
-testLog24 = take 4 $ testLog $ [Operator Sub, Number 10, Operator Add]
-testLog25 = take 4 $ testLog $ [Operator Sub, Operator Mul, Clear]
-testLog26 = take 4 $ testLog $ [Operator Sub, Operator Mul, Number 100]
-testLog27 = take 4 $ testLog $ [Operator Sub, Operator Mul, Operator Add]
+fromOutputLog :: Stream.Stream (Input,OperandRegister) -> Stream.Stream (Input,String)
+fromOutputLog xs = (runStream $ arr snd >>> second sarr) ((),xs)
+  where
+    sarr = StreamArrow $ arr $ Stream.map $ show . OperandRegister'
 
 
-testLog101 = take 10 $ testLog $ [Operator Add,Number 100,Operator Add,Number 10,Clear,Number 200,Operator Sub,Number 10,Number 300]
-
-testLog102 = take 10 $ testLog $ [Operator Add,Number 100,Operator Add,Number 10,Clear,Number 200,Operator Sub,Number 10,Number 300]
-testLog103 = take 10 $ testLog $ [Operator Add,Number 100,Operator Add,Number 10,Clear,Number 200,Operator Sub,Number 10,Number 300]
+main :: IO ()
+main = main1
 
 
+main1 :: IO ()
+main1 = do
+  hSetBuffering stdin NoBuffering
+  hSetEcho stdin False
+  xs <- Stream.toList . fromOutput . calculate . toInput . Stream.fromList <$> hGetContents stdin
+--  forM_ xs $ \x -> putStr "\r " >> putStr x >> putStr "          \b\b\b\b\b\b\b\b\b\b" >> hFlush stdout
+  forM_ xs putStrLn
 
-
-
-
---main :: IO ()
---main = do
---  xs <- randomZDK
---  forM_ xs $ \x -> do
---    putStrLn x
---    threadDelay $ 500 * 1000
-
---main = putStrLn "main"
-main = do
-  print testLog1
-  print testLog2
-  print testLog3
-  print testLog4
-  print testLog5
-  print testLog6
-  print testLog7
-  print testLog8
-  print testLog9
-  print testLog10
-  print testLog11
-  print testLog12
-  print testLog13
-  print testLog14
-  print testLog15
-  print testLog16
-  print testLog17
-  print testLog18
-  print testLog19
-  print testLog20
-  print testLog21
-  print testLog22
-  print testLog23
-  print testLog24
-  print testLog25
-  print testLog26
-  print testLog27
+main2 :: IO ()
+main2 = do
+  hSetBuffering stdin NoBuffering
+  hSetEcho stdin False
+  xs <- Stream.toList . fromOutputLog . calculateLog . toInput . Stream.fromList <$> hGetContents stdin
+  forM_ xs print
