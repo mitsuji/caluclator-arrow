@@ -206,43 +206,43 @@ calculateLog xs = (runAutomaton $ arr snd >>> (returnA &&& calculator)) ((),xs)
 
 
 toInput :: Stream.Stream Char -> Stream.Stream Input
-toInput xs = (runStream $ arr snd >>> sarr) ((),xs)
+toInput xs = (runStream $ arr snd >>> filter' >>> map') ((),xs)
   where
-    sarr = StreamArrow $ arr (Stream.filter $ isJust . f) >>> arr (Stream.map $ fromJust . f)
-      where
-        f :: Char -> Maybe Input
-        f '0' = Just $ Number N0
-        f '1' = Just $ Number N1
-        f '2' = Just $ Number N2
-        f '3' = Just $ Number N3
-        f '4' = Just $ Number N4
-        f '5' = Just $ Number N5
-        f '6' = Just $ Number N6
-        f '7' = Just $ Number N7
-        f '8' = Just $ Number N8
-        f '9' = Just $ Number N9
-        f '.' = Just $ Number Dot
-        f 'd' = Just $ Number BS
-        f '+' = Just $ Operator Add
-        f '-' = Just $ Operator Sub
-        f '*' = Just $ Operator Mul
-        f '/' = Just $ Operator Div
-        f '\n' = Just Equal
-        f '=' = Just Equal
-        f 'a' = Just AllClear
-        f 'c' = Just Clear
-        f _ = Nothing
+    filter' = StreamArrow $ arr $ Stream.filter $ isJust . f
+    map' = arr $ fromJust . f
+
+    f :: Char -> Maybe Input
+    f '0' = Just $ Number N0
+    f '1' = Just $ Number N1
+    f '2' = Just $ Number N2
+    f '3' = Just $ Number N3
+    f '4' = Just $ Number N4
+    f '5' = Just $ Number N5
+    f '6' = Just $ Number N6
+    f '7' = Just $ Number N7
+    f '8' = Just $ Number N8
+    f '9' = Just $ Number N9
+    f '.' = Just $ Number Dot
+    f 'd' = Just $ Number BS
+    f '+' = Just $ Operator Add
+    f '-' = Just $ Operator Sub
+    f '*' = Just $ Operator Mul
+    f '/' = Just $ Operator Div
+    f '\n' = Just Equal
+    f '=' = Just Equal
+    f 'e' = Just Equal
+    f 'a' = Just AllClear
+    f 'c' = Just Clear
+    f x | fromEnum x == 0x7f = Just $ Number BS
+        | otherwise = Nothing
 
 
 fromOutput :: Stream.Stream OperandRegister -> Stream.Stream String
-fromOutput xs = (runStream $ arr snd >>> sarr) ((),xs)
-  where
-    sarr = StreamArrow $ arr $ Stream.map $ show . OperandRegister'
+fromOutput xs = (runStream $ arr snd >>> (arr $ show . OperandRegister')) ((),xs)
 
 fromOutputLog :: Stream.Stream (Input,OperandRegister) -> Stream.Stream (Input,String)
-fromOutputLog xs = (runStream $ arr snd >>> second sarr) ((),xs)
-  where
-    sarr = StreamArrow $ arr $ Stream.map $ show . OperandRegister'
+fromOutputLog xs = (runStream $ arr snd >>> second (arr $ show . OperandRegister')) ((),xs)
+
 
 
 main :: IO ()
