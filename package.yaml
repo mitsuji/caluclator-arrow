@@ -21,6 +21,8 @@ description:         Please see the README on GitHub at <https://github.com/mits
 
 dependencies:
 - base >= 4.7 && < 5
+- arrows
+- Stream
 
 library:
   source-dirs: src
@@ -35,8 +37,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - calculator-arrow
-    - arrows
-    - Stream
 
   calculator-arrow-gui-exe:
     main:                Main.hs
@@ -47,8 +47,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - calculator-arrow
-    - arrows
-    - Stream
     - gloss
 
 tests:
