@@ -3,15 +3,15 @@ module Calculator (
   ,NumKey(..)
   ,Input(..)
   ,Output(..)
-  ,calculator
   ,calculate
   ,calculateLog
   ) where
 
-import qualified Data.Stream as Stream
+import OperandRegister
+
 import Control.Arrow
 import Control.Arrow.Transformer.Automaton(Automaton(..),runAutomaton)
-import OperandRegister
+import qualified Data.Stream as Stream
 
 
 data Operation = Add | Sub | Mul | Div deriving (Show)

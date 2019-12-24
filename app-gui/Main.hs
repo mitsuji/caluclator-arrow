@@ -18,9 +18,9 @@ main = do
   forkIO $ getStream inputVar >>= (putStream outputVar) . calculate 
   interactIO window white "0" onUpdate (onEvent inputVar outputVar) (\_ -> return())
   where
-    window = InWindow "Calculator" (640, 480) (100, 100)
+    window = InWindow "Calculator" (640, 200) (100, 100)
 
-    onUpdate xs = return $ (translate (-150) (-10)) . (scale 0.5 0.5) $ text xs
+    onUpdate xs = return $ (translate (-250) (0)) . (scale 0.5 0.5) $ text xs
 
     onEvent inputVar outputVar event xs =
       case toInput event of
