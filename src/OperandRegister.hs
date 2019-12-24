@@ -25,9 +25,10 @@ data OperandRegister = ORIntegral Integer
 zero :: OperandRegister
 zero = ORIntegral 0
 
+-- [TODO] max digits
 appendDigit :: OperandRegister -> Word8 -> OperandRegister
 appendDigit x@(ORIntegral v) n
-  | (0 <= n && n <= 9) = ORIntegral $ (v * 10) + (fromIntegral n)
+  | (v < 10^(scaleMax-1)) && (0 <= n && n <= 9) = ORIntegral $ (v * 10) + (fromIntegral n)
   | otherwise = x
 appendDigit x@(ORFractional v s) n
   | (s < scaleMax) && (0 <= n && n <= 9) = ORFractional ((v * 10) + (fromIntegral n)) (s+1)
