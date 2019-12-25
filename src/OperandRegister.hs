@@ -25,11 +25,6 @@ data OperandRegister = ORIntegral Integer
 zero :: OperandRegister
 zero = ORIntegral 0
 
--- [TODO] max digits
---             9
---  999999999999 ORIntegral   999999999999
--- 9.99999999999 ORFractional 999999999999 11
--- 99999999999.9 ORFractional 999999999999  1
 appendDigit :: OperandRegister -> Word8 -> OperandRegister
 appendDigit x@(ORIntegral v) n
   | (0 <= n && n <= 9) && (v < 10^(scaleMax-1)) = ORIntegral $ (v * 10) + (fromIntegral n)
@@ -61,10 +56,12 @@ optimise x = f x
 
 
 instance Num OperandRegister where
+  -- [TODO] max digits
   (+) x@(ORFractional xv xs) y@(ORFractional yv ys) | xs >= ys  = ORFractional (xv+(yv*(10^(xs-ys)))) xs
                                                     | otherwise = (+) y x
   (+) x y = (+) (forceFractional x) (forceFractional y)
 
+  -- [TODO] max digits
   (*) (ORFractional xv xs) (ORFractional yv ys) | (xs+ys) <= scaleMax = ORFractional (xv*yv) (xs+ys)
                                                 | otherwise = ORFractional ((xv*yv) `div` (10^((xs+ys)-scaleMax))) scaleMax
   (*) x y = (*) (forceFractional x) (forceFractional y)
@@ -81,6 +78,7 @@ instance Num OperandRegister where
   fromInteger x = ORIntegral x
 
 
+-- [TODO] max digits
 divide :: OperandRegister -> OperandRegister -> OperandRegister
 divide (ORFractional xv xs) (ORFractional yv ys) =
   let
