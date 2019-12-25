@@ -85,5 +85,3 @@ calculate xs = (runAutomaton $ arr snd >>> calculator) ((),xs)
 
 calculateLog :: Stream.Stream Input -> Stream.Stream (Input ,OperandRegister)
 calculateLog xs = (runAutomaton $ arr snd >>> (returnA &&& calculator)) ((),xs)
-
--- [TODO] output text digits

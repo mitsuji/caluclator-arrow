@@ -26,12 +26,16 @@ zero :: OperandRegister
 zero = ORIntegral 0
 
 -- [TODO] max digits
+--             9
+--  999999999999 ORIntegral   999999999999
+-- 9.99999999999 ORFractional 999999999999 11
+-- 99999999999.9 ORFractional 999999999999  1
 appendDigit :: OperandRegister -> Word8 -> OperandRegister
 appendDigit x@(ORIntegral v) n
-  | (v < 10^(scaleMax-1)) && (0 <= n && n <= 9) = ORIntegral $ (v * 10) + (fromIntegral n)
+  | (0 <= n && n <= 9) && (v < 10^(scaleMax-1)) = ORIntegral $ (v * 10) + (fromIntegral n)
   | otherwise = x
 appendDigit x@(ORFractional v s) n
-  | (s < scaleMax) && (0 <= n && n <= 9) = ORFractional ((v * 10) + (fromIntegral n)) (s+1)
+  | (0 <= n && n <= 9) && (v < 10^(scaleMax-1)) && (s < scaleMax-1) = ORFractional ((v * 10) + (fromIntegral n)) (s+1)
   | otherwise = x
 
 forceFractional :: OperandRegister -> OperandRegister
@@ -95,6 +99,7 @@ instance Fractional OperandRegister where
 
 newtype OperandRegister' = OperandRegister' OperandRegister
 
+-- [TODO] output text digits
 instance Show OperandRegister' where
   show (OperandRegister' (ORIntegral v)) = f v []
     where
