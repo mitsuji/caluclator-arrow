@@ -59,8 +59,7 @@ main1 = do
   hSetBuffering stdin NoBuffering
   hSetEcho stdin False
   xs <- Stream.toList . fromOutput . calculate . toInput . Stream.fromList <$> hGetContents stdin
---  forM_ xs $ \x -> putStr "\r " >> putStr x >> putStr "          \b\b\b\b\b\b\b\b\b\b" >> hFlush stdout
-  forM_ xs putStrLn
+  forM_ xs $ \x -> putStr "\r " >> putStr x  >> hFlush stdout
 
 main2 :: IO ()
 main2 = do

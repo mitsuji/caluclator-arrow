@@ -20,7 +20,8 @@ main = do
   where
     window = InWindow "Calculator" (640, 200) (100, 100)
 
-    onUpdate xs = return $ (translate (-250) (0)) . (scale 0.5 0.5) $ text xs
+    -- [TODO] create number images
+    onUpdate xs = return $ (translate (-310) 0 ) . (scale 0.4 0.4) $ text xs
 
     onEvent inputVar outputVar event xs =
       case toInput event of

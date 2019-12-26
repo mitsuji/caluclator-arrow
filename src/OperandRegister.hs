@@ -98,41 +98,46 @@ instance Fractional OperandRegister where
 newtype OperandRegister' = OperandRegister' OperandRegister
 
 -- [TODO] output text digits
+show' :: OperandRegister' -> String
+show' (OperandRegister' (ORIntegral v)) = f v []
+  where
+    f n xs = if n >= 0
+             then f' n xs
+             else '-': f' (abs n) xs
+
+    f' 0 xs = if length xs == 0
+             then "0"
+             else xs
+
+    f' n xs =
+      let
+        (d,m) = divMod n 10
+      in f' d $ (intToDigit $ fromIntegral m) : xs
+
+show' (OperandRegister' (ORFractional v s)) = mconcat $ f v []
+  where
+    f n xs = if n >= 0
+             then f' n xs
+             else "-": f' (abs n) xs
+
+    f' 0 xs =
+      let
+        zs = fromIntegral s - length xs
+      in if 0 <= zs
+         then ("0." <> replicate zs '0') : xs
+         else xs
+
+    f' n xs =
+      let
+        (d,m) = divMod n 10
+        m' = intToDigit $ fromIntegral m
+        x = if length xs == fromIntegral s
+            then [m','.']
+            else [m']
+      in f' d (x:xs)
+
+
 instance Show OperandRegister' where
-  show (OperandRegister' (ORIntegral v)) = f v []
-    where
-      f n xs = if n >= 0
-               then f' n xs
-               else '-': f' (abs n) xs
-
-      f' 0 xs = if length xs == 0
-               then "0"
-               else xs
-
-      f' n xs =
-        let
-          (d,m) = divMod n 10
-        in f' d $ (intToDigit $ fromIntegral m) : xs
-
-  show (OperandRegister' (ORFractional v s)) = mconcat $ f v []
-    where
-      f n xs = if n >= 0
-               then f' n xs
-               else "-": f' (abs n) xs
-
-      f' 0 xs =
-        let
-          zs = fromIntegral s - length xs
-        in if 0 <= zs
-           then ("0." <> replicate zs '0') : xs
-           else xs
-
-      f' n xs =
-        let
-          (d,m) = divMod n 10
-          m' = intToDigit $ fromIntegral m
-          x = if length xs == fromIntegral s
-              then [m','.']
-              else [m']
-        in f' d (x:xs)
-
+  show x =
+    let xs = show' x
+    in replicate (13 - length xs) '_' <> xs
